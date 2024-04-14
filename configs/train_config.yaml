@@ -1,0 +1,72 @@
+defaults:
+  - _self_
+  - data: null
+
+project: ???
+name: ???
+resume: false
+resume_from_checkpoint: null
+debug: false
+seed: 42
+postfix: ""
+base_logdir: null #! set at runtime
+expand_data: false
+expand_qanum: 5
+
+model:
+  data_type: bfloat16
+  learning_rate: 1e-3
+  lr_scheduler_type: linear
+  weight_decay: 0.0
+  warmup_ratio: 0.1
+
+lightning:
+  logger:
+    wandb: 
+      target: "pytorch_lighting.loggers.WandbLogger"
+      params:
+        project: ${project}
+        name: null          # set at runtime
+        save_dir: null      # set at runtime
+        offline: ${debug}
+
+  callbacks:
+    checkpoint_callback:
+      params:
+        dirpath: null
+        filename: "{epoch:02}-{step:06}"
+        verbose: true
+        save_last: false # by default, don't save las
+        save_top_k: -1  # by default, save all checkpoints
+        every_n_epochs: 2  # by defcault, save every checkpoint
+        monitor: null  # by default, no monitor
+        save_weights_only: true
+
+  trainer:
+    accelerator: gpu
+    devices: [0, 1, 2, 3]
+    strategy: deepspeed_stage_2
+    log_every_n_steps: 2 # this is global step
+    precision: bf16-true
+    max_epochs: 10
+    check_val_every_n_epoch: 1
+    accumulate_grad_batches: 1
+    benchmark: false
+
+
+hydra:
+  run:
+    dir: outputs/${hydra.job.name}/${project},${name}/lr=${model.learning_rate},batch_size=${data.batch_size}/${hydra.job.override_dirname}/
+  job:
+    config:
+      override_dirname:
+        exclude_keys:
+          - save_path
+          - project
+          - name
+          - lightning.trainer.devices
+          - model.learning_rate
+          - data.batch_size
+  callbacks:
+    rewritejobdircallback:
+      _target_: src.hydra_callbacks.RewriteJobDirCallback
